@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>EcoSense - Thermal & Energy Monitor</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 font-sans p-6">
+    <div class="max-w-6xl mx-auto space-y-6">
+        <!-- Header -->
+        <header class="flex justify-between items-center border-b border-slate-800 pb-4">
+            <div>
+                <h1 class="text-2xl font-bold text-emerald-400">EcoSense Energy Engine</h1>
+                <p class="text-slate-400 text-sm">Smart Thermal Cycling & Carbon Reduction Telemetry</p>
+            </div>
+            <div id="mode-badge" class="px-4 py-1.5 rounded-full text-xs font-bold bg-slate-800 border border-slate-700">
+                CONNECTING...
+            </div>
+        </header>
+
+        <!-- KPI Cards -->
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-mono">Current Power Draw</p>
+                <p id="val-power" class="text-2xl font-bold text-amber-400 mt-1">0 W</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-mono">Boiler Temperature</p>
+                <p id="val-temp" class="text-2xl font-bold text-blue-400 mt-1">0 °C</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-mono">Energy Saved (kWh)</p>
+                <p id="val-saved-kwh" class="text-2xl font-bold text-emerald-400 mt-1">0.0 kWh</p>
+            </div>
+            <div class="bg-slate-800 p-4 rounded-xl border border-slate-700">
+                <p class="text-xs text-slate-400 font-mono">Estimated Cost Savings</p>
+                <p id="val-saved-cost" class="text-2xl font-bold text-emerald-300 mt-1">₹ 0.00</p>
+            </div>
+        </div>
+
+        <!-- Real-Time Chart -->
+        <div class="bg-slate-800 p-6 rounded-xl border border-slate-700">
+            <h2 class="text-lg font-bold text-slate-200 mb-4">Live Thermal & Power Curve</h2>
+            <div class="relative h-80">
+                <canvas id="energyChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const ctx = document.getElementById('energyChart').getContext('2d');
+        const energyChart = new Chart(ctx, {
+            type: 'line',
+            data: {
+                labels: [],
+                datasets: [
+                    {
+                        label: 'Power Draw (Watts)',
+                        borderColor: '#f59e0b',
+                        backgroundColor: 'rgba(245, 158, 11, 0.1)',
+                        data: [],
+                        yAxisID: 'yPower',
+                        tension: 0.3,
+                        fill: true
+                    },
+                    {
+                        label: 'Water Temp (°C)',
+                        borderColor: '#60a5fa',
+                        data: [],
+                        yAxisID: 'yTemp',
+                        tension: 0.3
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: { grid: { color: '#334155' }, ticks: { color: '#94a3b8' } },
+                    yPower: {
+                        type: 'linear', position: 'left',
+                        grid: { color: '#334155' }, ticks: { color: '#f59e0b' },
+                        title: { display: true, text: 'Watts', color: '#f59e0b' }
+                    },
+                    yTemp: {
+                        type: 'linear', position: 'right',
+                        grid: { drawOnChartArea: false }, ticks: { color: '#60a5fa' },
+                        title: { display: true, text: 'Temperature °C', color: '#60a5fa' }
+                    }
+                },
+                plugins: { legend: { labels: { color: '#f8fafc' } } }
+            }
+        });
+
+        // WebSocket Connection
+        const ws = new WebSocket(`ws://${window.location.host}/ws/ecosense`);
+        const badge = document.getElementById('mode-badge');
+
+        ws.onmessage = (event) => {
+            const msg = JSON.parse(event.data);
+            if (msg.type === "ECO_STREAM") {
+                const d = msg.data;
+                
+                // Update KPI Cards
+                document.getElementById('val-power').innerText = `${d.power_watts} W`;
+                document.getElementById('val-temp').innerText = `${d.temp_c} °C`;
+                document.getElementById('val-saved-kwh').innerText = `${d.saved_kwh} kWh`;
+                document.getElementById('val-saved-cost').innerText = `₹ ${d.saved_cost_inr}`;
+
+                // Update Mode Badge
+                if (d.mode === "ECO_MODE") {
+                    badge.innerText = "ECO MODE ENABLED (POWER SAVING)";
+                    badge.className = "px-4 py-1.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500";
+                } else {
+                    badge.innerText = "ACTIVE HEATING MODE";
+                    badge.className = "px-4 py-1.5 rounded-full text-xs font-bold bg-amber-500/20 text-amber-400 border border-amber-500";
+                }
+
+                // Update Chart
+                if (energyChart.data.labels.length > 20) {
+                    energyChart.data.labels.shift();
+                    energyChart.data.datasets[0].data.shift();
+                    energyChart.data.datasets[1].data.shift();
+                }
+
+                energyChart.data.labels.push(d.timestamp);
+                energyChart.data.datasets[0].data.push(d.power_watts);
+                energyChart.data.datasets[1].data.push(d.temp_c);
+                energyChart.update();
+            }
+        };
+    </script>
+</body>
+</html>
